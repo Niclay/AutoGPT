@@ -13,7 +13,6 @@ from forge.sdk import (
 )
 import json	
 import pprint
-from .sdk import PromptEngine
 
 LOG = ForgeLogger(__name__)
 
@@ -96,47 +95,53 @@ class ForgeAgent(Agent):
         return task
 
     async def execute_step(self, task_id: str, step_request: StepRequestBody) -> Step:
-        
-        # Firstly we get the task this step is for so we can access the task input
-        task = await self.db.get_task(task_id)
+        """
+        For a tutorial on how to add your own logic please see the offical tutorial series:
+        https://aiedge.medium.com/autogpt-forge-e3de53cc58ec
 
-        # Create a new step in the database
+        The agent protocol, which is the core of the Forge, works by creating a task and then
+        executing steps for that task. This method is called when the agent is asked to execute
+        a step.
+
+        The task that is created contains an input string, for the benchmarks this is the task
+        the agent has been asked to solve and additional input, which is a dictionary and
+        could contain anything.
+
+        If you want to get the task use:
+
+        ```
+        task = await self.db.get_task(task_id)
+        ```
+
+        The step request body is essentially the same as the task request and contains an input
+        string, for the benchmarks this is the task the agent has been asked to solve and
+        additional input, which is a dictionary and could contain anything.
+
+        You need to implement logic that will take in this step input and output the completed step
+        as a step object. You can do everything in a single step or you can break it down into
+        multiple steps. Returning a request to continue in the step output, the user can then decide
+        if they want the agent to continue or not.
+        """
+        # An example that
         step = await self.db.create_step(
             task_id=task_id, input=step_request, is_last=True
         )
-        prompt_engine = PromptEngine("gpt-3.5-turbo")
-        
-        system_prompt = prompt_engine.load_prompt("system-format")
-        # Define the task parameters
-        task_kwargs = {
-            "task": task.input,
-            "abilities": self.abilities.list_abilities_for_prompt(),
-        }
 
-        # Load the task prompt with the defined task parameters
-        task_prompt = prompt_engine.load_prompt("task-step", **task_kwargs)
+        self.workspace.write(task_id=task_id, path="output.txt", data=b"Washington D.C")
 
-         messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": task_prompt}
-        ]
-        try:
-            # Define the parameters for the chat completion request
-            chat_completion_kwargs = {
-                "messages": messages,
-                "model": "gpt-3.5-turbo",
-            }
-            # Make the chat completion request and parse the response
-            chat_response = await chat_completion_request(**chat_completion_kwargs)
-            answer = json.loads(chat_response["choices"][0]["message"]["content"])
+        await self.db.create_artifact(
+            task_id=task_id,
+            step_id=step.step_id,
+            file_name="output.txt",
+            relative_path="",
+            agent_created=True,
+        )
 
-            # Log the answer for debugging purposes
-            LOG.info(pprint.pformat(answer))
+        step.output = "Washington D.C"
 
-            except json.JSONDecodeError as e:
-                # Handle JSON decoding errors
-                LOG.error(f"Unable to decode chat response: {chat_response}")
-            except Exception as e:
-                # Handle other exceptions
-                LOG.error(f"Unable to generate chat response: {e}")Step 7: Executing the Derived Ability
-    return step
+        LOG.info(f"\t✅ Final Step completed: {step.step_id}. \n" +
+                 f"Output should be placeholder text Washington D.C. You'll need to \n" +
+                 f"modify execute_step to include LLM behavior. Follow the tutorial " +
+                 f"if confused. ")
+
+        return step
